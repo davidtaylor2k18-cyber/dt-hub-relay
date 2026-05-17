@@ -133,7 +133,8 @@ function buildAllDestinations(primaryRtmpUrl, additionalDestinations = []) {
 }
 
 function redactStreamKey(url = '') {
-  return String(url).replace(/(\/app\/).+$/i, '$1••••••');
+  // Redact everything after /app/ to hide stream key
+  return String(url).replace(/\/app\/.+$/i, '/app/••••••');
 }
 
 async function checkFfmpeg() {
@@ -153,28 +154,14 @@ async function checkFfmpeg() {
     proc.on('close', (code) => {
       if (code === 0 && output.includes('ffmpeg version')) {
         const match = output.match(/ffmpeg version (\S+)/);
-        resolve({
-          ok: true,
-          version: match?.[1] || 'unknown',
-        });
+        resolve({ ok: true, version: match?.[1] || 'unknown' });
       } else {
-        resolve({
-          ok: false,
-          version: null,
-        });
+        resolve({ ok: false, version: null });
       }
     });
 
-    proc.on('error', () => {
-      resolve({
-        ok: false,
-        version: null,
-      });
-    });
+    proc.on('error', () => resolve({ ok: false, version: null }));
   });
 }
 
-module.exports = {
-  startFfmpegWebmRtmp,
-  checkFfmpeg,
-};
+module.exports = { startFfmpegWebmRtmp, checkFfmpeg };
