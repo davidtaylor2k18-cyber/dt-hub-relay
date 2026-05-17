@@ -53,6 +53,10 @@ function startFfmpegWebmRtmp({ sessionId, rtmpUrl, sourceMode, destinations = []
       detached: false,
     });
 
+    // Collect stderr tail for error reporting
+    const stderrTail = [];
+    const MAX_TAIL_LINES = 30;
+
     proc.stdout.on('data', (data) => {
       log('debug', `[${sessionId}] ffmpeg stdout: ${data.toString().trim()}`);
     });
@@ -61,14 +65,34 @@ function startFfmpegWebmRtmp({ sessionId, rtmpUrl, sourceMode, destinations = []
       const msg = data.toString().trim();
       if (!msg) return;
 
+      // Split into lines and add to tail
+      const lines = msg.split('\n').filter(Boolean);
+      for (const line of lines) {
+        stderrTail.push(line);
+        if (stderrTail.length > MAX_TAIL_LINES) {
+          stderrTail.shift();
+        }
+      }
+
+      // Log important lines at warn level
       if (
         msg.includes('error') ||
         msg.includes('Error') ||
+        msg.includes('ERROR') ||
+        msg.includes('Connection refused') ||
+        msg.includes('Connection reset') ||
+        msg.includes('Broken pipe') ||
+        msg.includes('Invalid') ||
+        msg.includes('RTMP') ||
+        msg.includes('rtmp')
+      ) {
+        log('warn', `[${sessionId}] ffmpeg: ${redactStreamKey(msg.slice(0, 500))}`);
+      } else if (
         msg.includes('frame=') ||
         msg.includes('speed=') ||
         msg.includes('Opening')
       ) {
-        log('debug', `[${sessionId}] ffmpeg: ${msg.slice(0, 500)}`);
+        log('debug', `[${sessionId}] ffmpeg: ${msg.slice(0, 200)}`);
       }
     });
 
@@ -83,7 +107,15 @@ function startFfmpegWebmRtmp({ sessionId, rtmpUrl, sourceMode, destinations = []
     });
 
     proc.on('close', (code, signal) => {
-      log('info', `[${sessionId}] ffmpeg exited with code ${code} signal ${signal || 'none'}`);
+      log('warn', `[${sessionId}] ffmpeg exited with code ${code} signal ${signal || 'none'}`);
+
+      // Log stderr tail for debugging
+      if (stderrTail.length > 0) {
+        log('warn', `[${sessionId}] ffmpeg stderr tail (last ${stderrTail.length} lines):`);
+        for (const line of stderrTail) {
+          log('warn', `[${sessionId}]   ${redactStreamKey(line)}`);
+        }
+      }
     });
 
     setTimeout(() => resolve(proc), 2500);
